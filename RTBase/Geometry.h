@@ -204,6 +204,28 @@ public:
 		float t;
 		return rayAABB(r, t);
 	}
+	bool rayAABB(const Ray& r, float& tEnter, float& tExit) const
+	{
+		
+		tEnter = -FLT_MAX;
+		tExit = FLT_MAX;
+
+		for (int i = 0; i < 3; i++)
+		{
+			float invDir = 1.0f / r.dir[i];
+			float t1 = (min[i] - r.o[i]) * invDir;
+			float t2 = (max[i] - r.o[i]) * invDir;
+
+			if (t1 > t2) std::swap(t1, t2);
+
+			tEnter = (t1 > tEnter) ? t1 : tEnter;
+			tExit = (t2 < tExit) ? t2 : tExit;
+
+			if (tExit < tEnter)
+				return false;
+		}
+		return true;
+	}
 	// Add code here
 	float area()
 	{
@@ -370,7 +392,7 @@ public:
 			for (int i = startIndex; i < endIndex; i++)
 			{
 				float t, u, v;
-				if (triangles[i].rayIntersect(ray, t, u, v) && t < intersection.t)
+				if (triangles[i].rayIntersect(ray, t, u, v) && t > 1e-4f && t < intersection.t)
 				{
 					intersection.t = t;
 					intersection.alpha = 1 - u - v;
@@ -397,7 +419,12 @@ public:
 	bool traverseVisible(const Ray& ray, const std::vector<Triangle>& triangles, float maxT)
 	{
 		float tBox;
-		if (!bounds.rayAABB(ray, tBox) || tBox > maxT) {
+		float tMin, tMax;
+		if (!bounds.rayAABB(ray, tMin, tMax)) {
+			return true;
+		}
+
+		if (tMin > maxT) {
 			return true;
 		}
 
@@ -406,7 +433,7 @@ public:
 			for (int i = startIndex; i < endIndex; i++)
 			{
 				float t, u, v;
-				if (triangles[i].rayIntersect(ray, t, u, v) && t < maxT)
+				if (triangles[i].rayIntersect(ray, t, u, v) && t > 1e-4f && t < maxT)
 				{
 					return false;
 				}
@@ -418,5 +445,6 @@ public:
 		bool rightVis = r ? r->traverseVisible(ray, triangles, maxT) : true;
 		return leftVis && rightVis;
 	}
+
 };
 

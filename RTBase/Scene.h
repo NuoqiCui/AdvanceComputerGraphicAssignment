@@ -77,29 +77,6 @@ public:
 			}
 		}
 	}
-	//IntersectionData traverse(const Ray& ray)
-	//{
-	//	IntersectionData intersection;
-	//	intersection.t = FLT_MAX;
-	//	for (int i = 0; i < triangles.size(); i++)
-	//	{
-	//		float t;
-	//		float u;
-	//		float v;
-	//		if (triangles[i].rayIntersect(ray, t, u, v))
-	//		{
-	//			if (t < intersection.t)
-	//			{
-	//				intersection.t = t;
-	//				intersection.ID = i;
-	//				intersection.alpha = u;
-	//				intersection.beta = v;
-	//				intersection.gamma = 1.0f - (u + v);
-	//			}
-	//		}
-	//	}
-	//	return intersection;
-	//}
 
 	IntersectionData traverse(const Ray& ray)
 	{
@@ -137,9 +114,9 @@ public:
 	{
 		Ray ray;
 		Vec3 dir = p2 - p1;
-		float maxT = dir.length() - (2.0f * EPSILON);
+		float maxT = dir.length() - (2.0f * 0.001f);
 		dir = dir.normalize();
-		ray.init(p1 + (dir * EPSILON), dir);
+		ray.init(p1 + (dir * 0.001f), dir);
 		return bvh->traverseVisible(ray, triangles, maxT);
 	}
 
