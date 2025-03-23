@@ -150,10 +150,15 @@ public:
 			}
 			Colour bsdf;
 			float pdf;
-			Vec3 wi = SamplingDistributions::cosineSampleHemisphere(sampler->next(), sampler->next());
-			pdf = SamplingDistributions::cosineHemispherePDF(wi);
+			//Vec3 wi = SamplingDistributions::cosineSampleHemisphere(sampler->next(), sampler->next());
+			Colour bsdfVal;
+			float pdfVal;
+			Vec3 wi = shadingData.bsdf->sample(shadingData, sampler, bsdfVal, pdfVal);
+			pdf = pdfVal;
+			bsdf = bsdfVal;
+			/*pdf = SamplingDistributions::cosineHemispherePDF(wi);
 			wi = shadingData.frame.toWorld(wi);
-			bsdf = shadingData.bsdf->evaluate(shadingData, wi);
+			bsdf = shadingData.bsdf->evaluate(shadingData, wi);*/
 			pathThroughput = pathThroughput * bsdf * fabsf(Dot(wi, shadingData.sNormal)) / pdf;
 			r.init(shadingData.x + (wi * EPSILON), wi);
 			return (direct + pathTrace(r, pathThroughput, depth + 1, sampler, shadingData.bsdf->isPureSpecular()));
@@ -207,7 +212,6 @@ public:
 
 						Colour pathThroughput(1.0f, 1.0f, 1.0f);
 						Colour col = pathTrace(ray, pathThroughput, 3, localSampler);
-						//Colour col = viewNormals(ray);
 
 						film->splat(px, py, col);
 

@@ -86,6 +86,34 @@ public:
 		c.b = b / v;
 		return c;
 	}
+	Colour operator+(float v) const
+	{
+		return Colour(r + v, g + v, b + v);
+	}
+	Colour operator-(float v) const
+	{
+		return Colour(r - v, g - v, b - v);
+	}
+	Colour operator-() const
+	{
+		return Colour(-r, -g , -b );
+	}
+
+	inline static Colour exp(const Colour& c)
+	{
+		return Colour(
+			std::exp(c.r),
+			std::exp(c.g),
+			std::exp(c.b)
+		);
+	}
+
+	inline Colour pow(const float exponent) const
+	{
+		return Colour(std::pow(r, exponent),
+			std::pow(g, exponent),
+			std::pow(b, exponent));
+	}
 	float Lum()
 	{
 		return ((0.2126f * r) + (0.7152f * g) + (0.0722f * b));
@@ -181,6 +209,16 @@ public:
 		if (index == 0) return x;
 		if (index == 1) return y;
 		return z;
+	}
+
+	inline Vec3 reflect(const Vec3& normal) const
+	{
+		float dotVal = x * normal.x + y * normal.y + z * normal.z;
+		return Vec3(
+			x - 2.0f * dotVal * normal.x,
+			y - 2.0f * dotVal * normal.y,
+			z - 2.0f * dotVal * normal.z
+		);
 	}
 };
 

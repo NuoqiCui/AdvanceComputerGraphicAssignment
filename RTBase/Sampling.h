@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Core.h"
 #include <random>
@@ -42,7 +42,6 @@ public:
 	}
 	static Vec3 cosineSampleHemisphere(float r1, float r2)
 	{
-		// Add code here
 		float theta = acos(sqrtf(r1));
 		float phi = 2 * M_PI * r2;
 
@@ -50,14 +49,10 @@ public:
 	}
 	static float cosineHemispherePDF(const Vec3 wi)
 	{
-
-		// Add code here
 		return wi.z / M_PI;
 	}
 	static Vec3 uniformSampleSphere(float r1, float r2)
 	{
-
-		// Add code here
 		float theta = acos(1 - 2 * r1);
 		float phi = 2 * M_PI * r2;
 
@@ -65,7 +60,7 @@ public:
 	}
 	static float uniformSpherePDF(const Vec3& wi)
 	{
-		// Add code here
 		return 1.0f / (4 * M_PI);
 	}
+
 };

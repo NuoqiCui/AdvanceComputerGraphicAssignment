@@ -118,6 +118,7 @@ public:
 		tex = (s[0] * w0) + (s[1] * w1) + (s[2] * w2) + (s[3] * w3);
 		return tex;
 	}
+
 	~Texture()
 	{
 		delete[] texels;
