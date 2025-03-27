@@ -200,18 +200,110 @@ public:
 	}
 };
 
+//
+//class Film
+//{
+//public:
+//	Colour* film;
+//	unsigned int width;
+//	unsigned int height;
+//	int SPP;
+//	ImageFilter* filter;
+//	void splat(const float x, const float y, const Colour& L) {
+//		float filterWeights[25]; // Storage to cache weights 
+//		unsigned int indices[25]; // Store indices to minimize computations 
+//		unsigned int used = 0;
+//		float total = 0;
+//		int size = filter->size();
+//		for (int i = -size; i <= size; i++) {
+//			for (int j = -size; j <= size; j++) {
+//				int px = (int)x + j;
+//				int py = (int)y + i;
+//				if (px >= 0 && px < width && py >= 0 && py < height) {
+//					indices[used] = (py * width) + px;
+//					filterWeights[used] = filter->filter(j, i);
+//					total += filterWeights[used];
+//					used++;
+//				}
+//			}
+//		}
+//		for (int i = 0; i < used; i++) {
+//			film[indices[i]] = film[indices[i]] + (L * filterWeights[i] / total);
+//		}
+//	}
+//
+//	void tonemap(int x, int y, unsigned char& r, unsigned char& g, unsigned char& b, float exposure = 1.0f)
+//	{
+//		Colour pixel = film[(y * width) + x] * exposure / (float)SPP;
+//		r = std::min(powf(std::max(pixel.r, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
+//		g = std::min(powf(std::max(pixel.g, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
+//		b = std::min(powf(std::max(pixel.b, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
+//		// Return a tonemapped pixel at coordinates x, y
+//	}
+//
+//	void applyTonemapping(unsigned char* outputBuffer, float exposure = 1.0f)
+//	{
+//		for (unsigned int y = 0; y < height; ++y)
+//		{
+//			for (unsigned int x = 0; x < width; ++x)
+//			{
+//				int index = y * width + x;
+//				unsigned char r, g, b;
+//				tonemap(x, y, r, g, b, exposure);
+//				outputBuffer[index * 3 + 0] = r;
+//				outputBuffer[index * 3 + 1] = g;
+//				outputBuffer[index * 3 + 2] = b;
+//			}
+//		}
+//	}
+//
+//
+//	// Do not change any code below this line
+//	void init(int _width, int _height, ImageFilter* _filter)
+//	{
+//		width = _width;
+//		height = _height;
+//		film = new Colour[width * height];
+//		clear();
+//		filter = _filter;
+//	}
+//	void clear()
+//	{
+//		memset(film, 0, width * height * sizeof(Colour));
+//		SPP = 0;
+//	}
+//	void incrementSPP()
+//	{
+//		SPP++;
+//	}
+//	void save(std::string filename)
+//	{
+//		Colour* hdrpixels = new Colour[width * height];
+//		for (unsigned int i = 0; i < (width * height); i++)
+//		{
+//			hdrpixels[i] = film[i] / (float)SPP;
+//		}
+//		stbi_write_hdr(filename.c_str(), width, height, 3, (float*)hdrpixels);
+//		delete[] hdrpixels;
+//	}
+//};
+
 
 class Film
 {
 public:
 	Colour* film;
+	Colour* albedo;
+	Colour* normal;
 	unsigned int width;
 	unsigned int height;
 	int SPP;
 	ImageFilter* filter;
+
+	// 将采样值累加到 film 中
 	void splat(const float x, const float y, const Colour& L) {
-		float filterWeights[25]; // Storage to cache weights 
-		unsigned int indices[25]; // Store indices to minimize computations 
+		float filterWeights[25];
+		unsigned int indices[25];
 		unsigned int used = 0;
 		float total = 0;
 		int size = filter->size();
@@ -238,26 +330,58 @@ public:
 		r = std::min(powf(std::max(pixel.r, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
 		g = std::min(powf(std::max(pixel.g, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
 		b = std::min(powf(std::max(pixel.b, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
-		// Return a tonemapped pixel at coordinates x, y
 	}
-	// Do not change any code below this line
+
+	void applyTonemapping(unsigned char* outputBuffer, float exposure = 1.0f)
+	{
+		for (unsigned int y = 0; y < height; ++y)
+		{
+			for (unsigned int x = 0; x < width; ++x)
+			{
+				int index = y * width + x;
+				unsigned char r, g, b;
+				tonemap(x, y, r, g, b, exposure);
+				outputBuffer[index * 3 + 0] = r;
+				outputBuffer[index * 3 + 1] = g;
+				outputBuffer[index * 3 + 2] = b;
+			}
+		}
+	}
+
+	// 初始化 Film 对象，同时为 film、albedo 和 normal 分配内存
 	void init(int _width, int _height, ImageFilter* _filter)
 	{
 		width = _width;
 		height = _height;
 		film = new Colour[width * height];
+		albedo = new Colour[width * height];
+		normal = new Colour[width * height];
 		clear();
 		filter = _filter;
 	}
+
+	// 清空图像，同时为 albedo 和 normal 设置默认值
 	void clear()
 	{
 		memset(film, 0, width * height * sizeof(Colour));
+		// 默认 albedo 为白色
+		for (unsigned int i = 0; i < width * height; i++)
+		{
+			albedo[i] = Colour(1.0f, 1.0f, 1.0f);
+		}
+		// 默认 normal 为 (0, 0, 1)
+		for (unsigned int i = 0; i < width * height; i++)
+		{
+			normal[i] = Colour(0.0f, 0.0f, 1.0f);
+		}
 		SPP = 0;
 	}
+
 	void incrementSPP()
 	{
 		SPP++;
 	}
+
 	void save(std::string filename)
 	{
 		Colour* hdrpixels = new Colour[width * height];
@@ -267,5 +391,13 @@ public:
 		}
 		stbi_write_hdr(filename.c_str(), width, height, 3, (float*)hdrpixels);
 		delete[] hdrpixels;
+	}
+
+	// 析构函数，释放动态分配的内存
+	~Film()
+	{
+		delete[] film;
+		delete[] albedo;
+		delete[] normal;
 	}
 };

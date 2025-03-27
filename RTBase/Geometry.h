@@ -395,9 +395,9 @@ public:
 				if (triangles[i].rayIntersect(ray, t, u, v) && t > 1e-4f && t < intersection.t)
 				{
 					intersection.t = t;
-					intersection.alpha = 1 - u - v;
-					intersection.beta = u;
-					intersection.gamma = v;
+					intersection.alpha = u;
+					intersection.beta = v;
+					intersection.gamma = 1-u-v;
 					intersection.ID = i;
 				}
 			}

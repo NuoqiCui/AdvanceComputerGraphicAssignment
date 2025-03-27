@@ -42,10 +42,13 @@ public:
 	}
 	static Vec3 cosineSampleHemisphere(float r1, float r2)
 	{
-		float theta = acos(sqrtf(r1));
-		float phi = 2 * M_PI * r2;
+		float theta = std::acos(std::sqrt(r1));
+		float phi = 2.0f * float(M_PI) * r2;
 
-		return SphericalCoordinates::sphericalToWorld(theta, phi);
+		float x = std::sin(theta) * std::cos(phi);
+		float y = std::sin(theta) * std::sin(phi);
+		float z = std::cos(theta);
+		return Vec3(x, y, z);
 	}
 	static float cosineHemispherePDF(const Vec3 wi)
 	{
@@ -53,10 +56,14 @@ public:
 	}
 	static Vec3 uniformSampleSphere(float r1, float r2)
 	{
-		float theta = acos(1 - 2 * r1);
-		float phi = 2 * M_PI * r2;
+		float theta = std::acos(1.0f - 2.0f * r1);
+		float phi = 2.0f * float(M_PI) * r2;
 
-		return SphericalCoordinates::sphericalToWorld(theta, phi);
+		float sinTheta = std::sin(theta);
+		float x = sinTheta * std::cos(phi);
+		float y = sinTheta * std::sin(phi);
+		float z = std::cos(theta);
+		return Vec3(x, y, z);
 	}
 	static float uniformSpherePDF(const Vec3& wi)
 	{

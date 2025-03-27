@@ -10,6 +10,7 @@
 #include "GamesEngineeringBase.h"
 #include <thread>
 #include <functional>
+#include <OpenImageDenoise/oidn.hpp>
 
 #define MAX_DEPTH 5
 #define EPSILON   1e-4f
@@ -180,6 +181,118 @@ public:
 		return Colour(0.0f, 0.0f, 0.0f);
 	}
 
+
+	//void denoise(float* denoised)
+	//{
+	//	int width = film->width;
+	//	int height = film->height;
+
+	//	std::vector<float> inputBuffer(width * height * 3);
+	//	for (int i = 0; i < width * height; i++)
+	//	{
+	//		inputBuffer[i * 3 + 0] = film->film[i].r;
+	//		inputBuffer[i * 3 + 1] = film->film[i].g;
+	//		inputBuffer[i * 3 + 2] = film->film[i].b;
+	//	}
+
+	//	std::vector<float> outputBuffer(width * height * 3);
+
+	//	oidn::DeviceRef device = oidn::newDevice();
+	//	device.commit();
+
+	//	oidn::FilterRef filter = device.newFilter("RT");
+	//	filter.set("hdr", true);
+
+	//	filter.setImage("color", inputBuffer.data(), oidn::Format::Float3, width, height);
+	//	filter.setImage("output", outputBuffer.data(), oidn::Format::Float3, width, height);
+
+	//	memccpy(denoised, outputBuffer.data(), width * height * 3);
+	//	filter.commit();
+	//	filter.execute();
+	//}
+
+	//void denoise(float* color, float* albedo, float* normal, float* output, int width, int height)
+	//{
+	//	std::cerr << "albedo pointer = " << static_cast<void*>(albedo) << std::endl;
+	//	try {
+	//		oidn::DeviceRef device = oidn::newDevice();
+	//		device.commit();
+
+	//		const size_t size = width * height * 3 * sizeof(float); // float3 buffer
+
+	//		oidn::BufferRef colorBuf = device.newBuffer(size);
+	//		oidn::BufferRef albedoBuf = albedo ? device.newBuffer(size) : nullptr;
+	//		if (albedo) {
+	//			albedoBuf = device.newBuffer(size);
+	//			std::cerr << "albedoBuf.getData() = " << albedoBuf.getData() << std::endl;
+	//			if (!albedoBuf.getData()) {
+	//				std::cerr << "Failed to create albedo buffer." << std::endl;
+	//			}
+	//		}
+	//		oidn::BufferRef normalBuf = normal ? device.newBuffer(size) : nullptr;
+	//		oidn::BufferRef outputBuf = device.newBuffer(size);
+
+	//		std::memcpy(colorBuf.getData(), color, size);
+	//		if (albedo && albedoBuf) std::memcpy(albedoBuf.getData(), albedo, size);
+	//		if (normal && normalBuf) std::memcpy(normalBuf.getData(), normal, size);
+
+	//		oidn::FilterRef filter = device.newFilter("RT");
+	//		filter.setImage("color", colorBuf, oidn::Format::Float3, width, height);
+	//		if (albedo && albedoBuf) filter.setImage("albedo", albedoBuf, oidn::Format::Float3, width, height);
+	//		if (normal && normalBuf) filter.setImage("normal", normalBuf, oidn::Format::Float3, width, height);
+	//		filter.setImage("output", outputBuf, oidn::Format::Float3, width, height);
+	//		filter.set("hdr", true);
+
+	//		filter.commit();
+	//		filter.execute();
+
+	//		// copy data from outputBuf
+	//		std::memcpy(output, outputBuf.getData(), size);
+
+	//		const char* message;
+	//		if (device.getError(message) != oidn::Error::None) {
+	//			std::cerr << "[OIDN Error] " << message << std::endl;
+	//		}
+	//	}
+	//	catch (const std::exception& e) {
+	//		std::cerr << "OIDN Exception: " << e.what() << std::endl;
+	//	}
+	//}
+
+	void denoise(float* color, float* output, int width, int height)
+	{
+		try {
+			oidn::DeviceRef device = oidn::newDevice();
+			device.commit();
+
+			const size_t size = width * height * 3 * sizeof(float); // float3 buffer
+
+			oidn::BufferRef colorBuf = device.newBuffer(size);
+			oidn::BufferRef outputBuf = device.newBuffer(size);
+
+			std::memcpy(colorBuf.getData(), color, size);
+
+			oidn::FilterRef filter = device.newFilter("RT");
+			filter.setImage("color", colorBuf, oidn::Format::Float3, width, height);
+			filter.setImage("output", outputBuf, oidn::Format::Float3, width, height);
+			filter.set("hdr", true);
+
+			filter.commit();
+			filter.execute();
+
+			// copy data from outputBuf
+			std::memcpy(output, outputBuf.getData(), size);
+
+			const char* message;
+			if (device.getError(message) != oidn::Error::None) {
+				std::cerr << "[OIDN Error] " << message << std::endl;
+			}
+		}
+		catch (const std::exception& e) {
+			std::cerr << "OIDN Exception: " << e.what() << std::endl;
+		}
+	}
+
 	void render()
 	{
 		static const int TILE_SIZE = 32;
@@ -246,7 +359,38 @@ public:
 		for (auto& w : workers) {
 			w.join();
 		}
+		savePNG("output.png");
+		float* denoised = new float[film->width * film->height * 3];
+
+		for (int i = 0; i < 10; i++) {
+			std::cerr << "film->albedo[" << i << "] = "
+				<< film->albedo[i].r << ", "
+				<< film->albedo[i].g << ", "
+				<< film->albedo[i].b << std::endl;
+		}
+
+
+		//denoise(reinterpret_cast<float*>(film->film),
+
+		//	reinterpret_cast<float*>(film->albedo),
+
+		//	reinterpret_cast<float*>(film->normal),
+
+		//	denoised,
+
+		//	film->width, film->height);
+
+		denoise(reinterpret_cast<float*>(film->film),
+
+			denoised,
+
+			film->width, film->height);
+
+		stbi_write_hdr("raw.hdr", film->width, film->height, 3, (float*)film->film);
+
+		stbi_write_hdr("denoised.hdr", film->width, film->height, 3, denoised);
 	}
+
 
 	int getSPP()
 	{
@@ -269,4 +413,14 @@ public:
 			canvas->getWidth() * 3
 		);
 	}
+
+	void saveHDR(std::string filename, Film* film)
+	{
+		int width = film->width;
+		int height = film->height;
+
+	}
+
+
+
 };
