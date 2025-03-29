@@ -67,7 +67,20 @@ public:
 		return Colour(0.0f, 0.0f, 0.0f);
 	}
 
-
+	Colour getAlbedo(Ray& r)
+	{
+		IntersectionData intersection = scene->traverse(r);
+		if (intersection.t < FLT_MAX)
+		{
+			ShadingData shadingData = scene->calculateShadingData(intersection, r);
+			if (ConductorBSDF* conductor = dynamic_cast<ConductorBSDF*>(shadingData.bsdf))
+			{
+				return conductor->albedo->sample(shadingData.tu, shadingData.tv);
+			}
+			return Colour(1.0f, 1.0f, 1.0f);
+		}
+		return Colour(0.0f, 0.0f, 0.0f);
+	}
 
 	Colour computeDirect(ShadingData shadingData, Sampler* sampler)
 	{
@@ -117,6 +130,81 @@ public:
 		return Colour(0.0f, 0.0f, 0.0f);
 	}
 
+	Colour computeDirectVPL(ShadingData shadingData, Sampler* sampler)
+	{
+		if (shadingData.bsdf->isPureSpecular())
+		{
+			return Colour(0.0f, 0.0f, 0.0f);
+		}
+
+		Colour L(0.0f, 0.0f, 0.0f);
+
+		{
+			float pmf;
+			Light* light = scene->sampleLight(sampler, pmf);
+			float pdf;
+			Colour emitted;
+			Vec3 p = light->sample(shadingData, sampler, emitted, pdf);
+
+			if (light->isArea())
+			{
+				Vec3 wi = p - shadingData.x;
+				float l2 = wi.lengthSq();
+				wi = wi.normalize();
+				float GTerm = (max(Dot(wi, shadingData.sNormal), 0.0f) *
+					max(-Dot(wi, light->normal(shadingData, wi)), 0.0f)) / l2;
+				if (GTerm > 0 && scene->visible(shadingData.x, p))
+				{
+					Colour f = shadingData.bsdf->evaluate(shadingData, wi);
+					float pdf_light = pdf * pmf;
+					float pdf_bsdf = shadingData.bsdf->PDF(shadingData, wi);
+					float weight = pdf_light / (pdf_light + pdf_bsdf + 1e-6f);
+					L = L + f * emitted * GTerm * weight / (pdf_light);
+				}
+			}
+			else
+			{
+				Vec3 wi = p;
+				float GTerm = max(Dot(wi, shadingData.sNormal), 0.0f);
+				if (GTerm > 0 && scene->visible(shadingData.x, shadingData.x + (p * 10000.0f)))
+				{
+					Colour f = shadingData.bsdf->evaluate(shadingData, wi);
+					float pdf_light = pdf * pmf;
+					float pdf_bsdf = shadingData.bsdf->PDF(shadingData, wi);
+					float weight = pdf_light / (pdf_light + pdf_bsdf + 1e-6f);
+					L = L + f * emitted * GTerm * weight / (pdf_light);
+				}
+			}
+		}
+
+		{
+			int numVPLs = scene->vplList.size();
+			if (numVPLs > 0)
+			{
+				float r = sampler->next();
+				int idx = min((int)(r * numVPLs), numVPLs - 1);
+				const VPL& vpl = scene->vplList[idx];
+				float vplPickPdf = 1.0f / numVPLs;
+
+				Vec3 wi = vpl.position - shadingData.x;
+				float dist2 = wi.lengthSq();
+				wi = wi.normalize();
+				float GTerm = (max(Dot(wi, shadingData.sNormal), 0.0f) *
+					max(Dot(-wi, vpl.normal), 0.0f)) / dist2;
+				if (GTerm > 0 && scene->visible(shadingData.x, vpl.position))
+				{
+					Colour f = shadingData.bsdf->evaluate(shadingData, wi);
+					float p_vpl = vpl.pdf * vplPickPdf;
+					float p_bsdf = shadingData.bsdf->PDF(shadingData, wi);
+					float weight = p_vpl / (p_vpl + p_bsdf + 1e-6f);
+					L = L + f * vpl.emission * GTerm * weight / (p_vpl);
+				}
+			}
+		}
+
+		return L;
+	}
+
 
 	Colour pathTrace(Ray& r, Colour& pathThroughput, int depth, Sampler* sampler, bool canHitLight = true)
 	{
@@ -135,7 +223,7 @@ public:
 					return Colour(0.0f, 0.0f, 0.0f);
 				}
 			}
-			Colour direct = pathThroughput * computeDirect(shadingData, sampler);
+			Colour direct = pathThroughput * computeDirectVPL(shadingData, sampler);
 			if (depth > MAX_DEPTH)
 			{
 				return direct;
@@ -166,6 +254,66 @@ public:
 		}
 		return scene->background->evaluate(shadingData, r.dir);
 	}
+
+	Colour connectToCamera(const ShadingData& shadingData, Scene* scene)
+	{
+		Vec3 camPos = scene->camera.origin;
+		Vec3 dir = camPos - shadingData.x;
+		float dist = dir.length();
+		dir = dir.normalize();
+		if (scene->visible(shadingData.x, camPos))
+		{
+			float attenuation = 1.0f / (dist * dist);
+			return Colour(attenuation, attenuation, attenuation);
+		}
+		return Colour(0.0f, 0.0f, 0.0f);
+	}
+
+	Colour lightTrace(Ray& r, Colour& pathThroughput, int depth, Sampler* sampler, bool canConnectCamera = true)
+	{
+		IntersectionData intersection = scene->traverse(r);
+		ShadingData shadingData = scene->calculateShadingData(intersection, r);
+		if (shadingData.t < FLT_MAX)
+		{
+			Colour camContribution(0.0f, 0.0f, 0.0f);
+			if (canConnectCamera)
+			{
+				camContribution = connectToCamera(shadingData, scene);
+				if (camContribution.Lum() > 1e-10f)
+				{
+					return pathThroughput * camContribution;
+				}
+		return Colour(0.0f, 0.0f, 0.0f);
+			}
+
+			Colour direct = pathThroughput * computeDirectVPL(shadingData, sampler);
+
+			if (depth > MAX_DEPTH)
+			{
+				return direct;
+			}
+
+			float russianRouletteProbability = min(pathThroughput.Lum(), 0.9f);
+			if (sampler->next() < russianRouletteProbability)
+			{
+				pathThroughput = pathThroughput / russianRouletteProbability;
+			}
+			else
+			{
+				return direct;
+			}
+
+			Colour bsdfVal;
+			float pdfVal;
+			Vec3 wi = shadingData.bsdf->sample(shadingData, sampler, bsdfVal, pdfVal);
+			float pdf = pdfVal;
+			pathThroughput = pathThroughput * bsdfVal * fabsf(Dot(wi, shadingData.sNormal)) / pdf;
+			r.init(shadingData.x + (wi * EPSILON), wi);
+			return direct + lightTrace(r, pathThroughput, depth + 1, sampler, shadingData.bsdf->isPureSpecular());
+		}
+		return Colour(0.0f, 0.0f, 0.0f);
+	}
+
 	Colour direct(Ray& r, Sampler* sampler)
 	{
 		IntersectionData intersection = scene->traverse(r);
@@ -176,90 +324,14 @@ public:
 			{
 				return shadingData.bsdf->emit(shadingData, shadingData.wo);
 			}
-			return computeDirect(shadingData, sampler);
+			return computeDirectVPL(shadingData, sampler);
 		}
 		return Colour(0.0f, 0.0f, 0.0f);
 	}
 
 
-	//void denoise(float* denoised)
-	//{
-	//	int width = film->width;
-	//	int height = film->height;
 
-	//	std::vector<float> inputBuffer(width * height * 3);
-	//	for (int i = 0; i < width * height; i++)
-	//	{
-	//		inputBuffer[i * 3 + 0] = film->film[i].r;
-	//		inputBuffer[i * 3 + 1] = film->film[i].g;
-	//		inputBuffer[i * 3 + 2] = film->film[i].b;
-	//	}
-
-	//	std::vector<float> outputBuffer(width * height * 3);
-
-	//	oidn::DeviceRef device = oidn::newDevice();
-	//	device.commit();
-
-	//	oidn::FilterRef filter = device.newFilter("RT");
-	//	filter.set("hdr", true);
-
-	//	filter.setImage("color", inputBuffer.data(), oidn::Format::Float3, width, height);
-	//	filter.setImage("output", outputBuffer.data(), oidn::Format::Float3, width, height);
-
-	//	memccpy(denoised, outputBuffer.data(), width * height * 3);
-	//	filter.commit();
-	//	filter.execute();
-	//}
-
-	//void denoise(float* color, float* albedo, float* normal, float* output, int width, int height)
-	//{
-	//	std::cerr << "albedo pointer = " << static_cast<void*>(albedo) << std::endl;
-	//	try {
-	//		oidn::DeviceRef device = oidn::newDevice();
-	//		device.commit();
-
-	//		const size_t size = width * height * 3 * sizeof(float); // float3 buffer
-
-	//		oidn::BufferRef colorBuf = device.newBuffer(size);
-	//		oidn::BufferRef albedoBuf = albedo ? device.newBuffer(size) : nullptr;
-	//		if (albedo) {
-	//			albedoBuf = device.newBuffer(size);
-	//			std::cerr << "albedoBuf.getData() = " << albedoBuf.getData() << std::endl;
-	//			if (!albedoBuf.getData()) {
-	//				std::cerr << "Failed to create albedo buffer." << std::endl;
-	//			}
-	//		}
-	//		oidn::BufferRef normalBuf = normal ? device.newBuffer(size) : nullptr;
-	//		oidn::BufferRef outputBuf = device.newBuffer(size);
-
-	//		std::memcpy(colorBuf.getData(), color, size);
-	//		if (albedo && albedoBuf) std::memcpy(albedoBuf.getData(), albedo, size);
-	//		if (normal && normalBuf) std::memcpy(normalBuf.getData(), normal, size);
-
-	//		oidn::FilterRef filter = device.newFilter("RT");
-	//		filter.setImage("color", colorBuf, oidn::Format::Float3, width, height);
-	//		if (albedo && albedoBuf) filter.setImage("albedo", albedoBuf, oidn::Format::Float3, width, height);
-	//		if (normal && normalBuf) filter.setImage("normal", normalBuf, oidn::Format::Float3, width, height);
-	//		filter.setImage("output", outputBuf, oidn::Format::Float3, width, height);
-	//		filter.set("hdr", true);
-
-	//		filter.commit();
-	//		filter.execute();
-
-	//		// copy data from outputBuf
-	//		std::memcpy(output, outputBuf.getData(), size);
-
-	//		const char* message;
-	//		if (device.getError(message) != oidn::Error::None) {
-	//			std::cerr << "[OIDN Error] " << message << std::endl;
-	//		}
-	//	}
-	//	catch (const std::exception& e) {
-	//		std::cerr << "OIDN Exception: " << e.what() << std::endl;
-	//	}
-	//}
-
-	void denoise(float* color, float* output, int width, int height)
+	void denoise(float* color, float* albedo, float* normal, float* output, int width, int height)
 	{
 		try {
 			oidn::DeviceRef device = oidn::newDevice();
@@ -268,12 +340,18 @@ public:
 			const size_t size = width * height * 3 * sizeof(float); // float3 buffer
 
 			oidn::BufferRef colorBuf = device.newBuffer(size);
+			oidn::BufferRef albedoBuf = albedo ? device.newBuffer(size) : nullptr;
+			oidn::BufferRef normalBuf = normal ? device.newBuffer(size) : nullptr;
 			oidn::BufferRef outputBuf = device.newBuffer(size);
 
 			std::memcpy(colorBuf.getData(), color, size);
+			if (albedo && albedoBuf) std::memcpy(albedoBuf.getData(), albedo, size);
+			if (normal && normalBuf) std::memcpy(normalBuf.getData(), normal, size);
 
 			oidn::FilterRef filter = device.newFilter("RT");
 			filter.setImage("color", colorBuf, oidn::Format::Float3, width, height);
+			if (albedo && albedoBuf) filter.setImage("albedo", albedoBuf, oidn::Format::Float3, width, height);
+			if (normal && normalBuf) filter.setImage("normal", normalBuf, oidn::Format::Float3, width, height);
 			filter.setImage("output", outputBuf, oidn::Format::Float3, width, height);
 			filter.set("hdr", true);
 
@@ -292,6 +370,7 @@ public:
 			std::cerr << "OIDN Exception: " << e.what() << std::endl;
 		}
 	}
+
 
 	void render()
 	{
@@ -322,6 +401,13 @@ public:
 						float py = y + 0.5f;
 
 						Ray ray = scene->camera.generateRay(px, py);
+
+						if (film->SPP == 1)
+						{
+							int idx = y * film->width + x;
+							//film->albedo[idx] = getAlbedo(ray);
+							film->normal[idx] = viewNormals(ray);
+						}
 
 						Colour pathThroughput(1.0f, 1.0f, 1.0f);
 						Colour col = pathTrace(ray, pathThroughput, 3, localSampler);
@@ -360,35 +446,21 @@ public:
 			w.join();
 		}
 		savePNG("output.png");
+
+
 		float* denoised = new float[film->width * film->height * 3];
 
-		for (int i = 0; i < 10; i++) {
-			std::cerr << "film->albedo[" << i << "] = "
-				<< film->albedo[i].r << ", "
-				<< film->albedo[i].g << ", "
-				<< film->albedo[i].b << std::endl;
-		}
 
-
-		//denoise(reinterpret_cast<float*>(film->film),
-
-		//	reinterpret_cast<float*>(film->albedo),
-
-		//	reinterpret_cast<float*>(film->normal),
-
-		//	denoised,
-
-		//	film->width, film->height);
-
-		denoise(reinterpret_cast<float*>(film->film),
-
+		/*denoise(reinterpret_cast<float*>(film->film),
+			reinterpret_cast<float*>(film->albedo),
+			reinterpret_cast<float*>(film->normal),
 			denoised,
+			film->width, film->height);*/
 
-			film->width, film->height);
 
 		stbi_write_hdr("raw.hdr", film->width, film->height, 3, (float*)film->film);
 
-		stbi_write_hdr("denoised.hdr", film->width, film->height, 3, denoised);
+		//stbi_write_hdr("denoised.hdr", film->width, film->height, 3, denoised);
 	}
 
 
@@ -420,7 +492,5 @@ public:
 		int height = film->height;
 
 	}
-
-
 
 };

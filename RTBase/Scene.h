@@ -41,6 +41,28 @@ public:
 	}
 };
 
+struct VPL {
+	Vec3 position;
+	Vec3 normal;
+	Colour emission;
+	float pdf;
+};
+
+ShadingData createDummyShadingData(const Vec3& pos, const Vec3& normal)
+{
+	ShadingData sd;
+	sd.x = pos;
+	sd.sNormal = normal;
+	sd.gNormal = normal;
+	sd.tu = 0.5f;
+	sd.tv = 0.5f;
+	sd.wo = -normal;
+	sd.frame.fromVector(normal);
+	sd.t = 0.0f;
+	sd.bsdf = nullptr;
+	return sd;
+}
+
 class Scene
 {
 public:
@@ -51,6 +73,7 @@ public:
 	BVHNode* bvh = NULL;
 	Camera camera;
 	AABB bounds;
+	std::vector<VPL> vplList;
 	void build()
 	{
 		// Add BVH building code here
@@ -61,7 +84,7 @@ public:
 		}
 		triangles.clear();
 		bvh = new BVHNode();
-		bvh->build(inputTriangles,triangles);
+		bvh->build(inputTriangles, triangles);
 
 
 		// Do not touch the code below this line!
@@ -77,6 +100,58 @@ public:
 			}
 		}
 	}
+
+	void computeVPLs(int numPhotons, Sampler* sampler)
+	{
+		vplList.clear();
+		int numLights = lights.size();
+		if (numLights == 0)
+			return;
+		int photonsPerLight = numPhotons / numLights;
+
+		Vec3 center = (bounds.min + bounds.max) * 0.5f;
+		Vec3 defaultNormal(0.0f, 1.0f, 0.0f);
+		ShadingData dummySD = createDummyShadingData(center, defaultNormal);
+
+		for (int i = 0; i < numLights; i++)
+		{
+			Light* light = lights[i];
+			if (!light->isArea())
+				continue;
+
+			for (int j = 0; j < photonsPerLight; j++)
+			{
+				Colour emitted;
+				float pdf;
+				Vec3 p = light->sample(dummySD, sampler, emitted, pdf);
+				if (pdf < 1e-6f)
+					continue;
+				float r1 = sampler->next();
+				float r2 = sampler->next();
+				Vec3 localDir = SamplingDistributions::cosineSampleHemisphere(r1, r2);
+				Frame frame;
+				frame.fromVector(defaultNormal);
+				Vec3 photonDir = frame.toWorld(localDir);
+				Ray photonRay(p, photonDir);
+				IntersectionData its = traverse(photonRay);
+				if (its.t < FLT_MAX)
+				{
+					ShadingData sd = calculateShadingData(its, photonRay);
+					if (!sd.bsdf->isPureSpecular())
+					{
+						VPL vpl;
+						vpl.position = photonRay.at(its.t);
+						vpl.normal = sd.sNormal;
+						float dist2 = its.t * its.t;
+						vpl.emission = emitted / (pdf * dist2);
+						vpl.pdf = 1.0f / photonsPerLight;
+						vplList.push_back(vpl);
+					}
+				}
+			}
+		}
+	}
+
 
 	IntersectionData traverse(const Ray& ray)
 	{
@@ -148,7 +223,8 @@ public:
 			}
 			shadingData.frame.fromVector(shadingData.sNormal);
 			shadingData.t = intersection.t;
-		} else
+		}
+		else
 		{
 			shadingData.wo = -ray.dir;
 			shadingData.t = intersection.t;
