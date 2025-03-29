@@ -171,7 +171,6 @@ public:
 	virtual Colour evaluate(const ShadingData& /*shadingData*/,
 		const Vec3& /*wi*/) override
 	{
-
 		return Colour(0.0f, 0.0f, 0.0f);
 	}
 
@@ -203,7 +202,6 @@ public:
 		return albedo->sampleAlpha(shadingData.tu, shadingData.tv);
 	}
 };
-
 
 class ConductorBSDF : public BSDF {
 public:
@@ -336,19 +334,15 @@ public:
 
 	virtual Colour evaluate(const ShadingData& shadingData, const Vec3& wiWorld) override {
 		Colour baseColor = albedo->sample(shadingData.tu, shadingData.tv);
-
 		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
 		Vec3 wiLocal = shadingData.frame.toLocal(wiWorld);
-
 		float cosThetaO = fabs(woLocal.z);
 		float cosThetaI = fabs(wiLocal.z);
 		if (cosThetaO < 1e-6f || cosThetaI < 1e-6f)
 			return Colour(0.f, 0.f, 0.f);
-
 		Vec3 whLocal = (woLocal + wiLocal).normalize();
 		if (whLocal.z < 0.f)
 			whLocal = -whLocal;
-
 		float D = D_GGX(whLocal, alpha);
 		float G = G_SmithGGX(woLocal, wiLocal, alpha);
 		float cosWH = fabs(woLocal.dot(whLocal));
@@ -360,12 +354,10 @@ public:
 	virtual float PDF(const ShadingData& shadingData, const Vec3& wiWorld) override {
 		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
 		Vec3 wiLocal = shadingData.frame.toLocal(wiWorld);
-
 		float cosThetaO = fabs(woLocal.z);
 		float cosThetaI = fabs(wiLocal.z);
 		if (cosThetaO < 1e-6f || cosThetaI < 1e-6f)
 			return 0.f;
-
 		Vec3 whLocal = (woLocal + wiLocal).normalize();
 		if (whLocal.z < 0.f)
 			whLocal = -whLocal;
@@ -399,24 +391,18 @@ public:
 	GlassBSDF(Texture* _albedo, float _intIOR, float _extIOR)
 		: albedo(_albedo), intIOR(_intIOR), extIOR(_extIOR)
 	{
-		albedo = _albedo;
-		intIOR = _intIOR;
-		extIOR = _extIOR;
 	}
 
 	inline float fresnelDielectric(float cosThetaI, float extIOR, float intIOR) {
 		cosThetaI = fabs(cosThetaI);
 		float etaI = extIOR;
 		float etaT = intIOR;
-
 		float sinThetaI = sqrtf(std::max(0.0f, 1.0f - cosThetaI * cosThetaI));
 		float eta = etaI / etaT;
 		float sinThetaT = eta * sinThetaI;
-
 		if (sinThetaT >= 1.0f) {
 			return 1.0f;
 		}
-
 		float cosThetaT = sqrtf(std::max(0.0f, 1.0f - sinThetaT * sinThetaT));
 		float Rs = (etaI * cosThetaI - etaT * cosThetaT)
 			/ (etaI * cosThetaI + etaT * cosThetaT);
@@ -455,7 +441,6 @@ public:
 
 		Vec3 woWorld = shadingData.wo;
 		Vec3 woLocal = shadingData.frame.toLocal(woWorld);
-
 		float cosThetaO = woLocal.z;
 		if (fabs(cosThetaO) < 1e-6f) {
 			pdf = 0.0f;
@@ -467,10 +452,8 @@ public:
 		float n1 = entering ? extIOR : intIOR;
 		float n2 = entering ? intIOR : extIOR;
 		float eta = n1 / n2;
-
 		float F = fresnelDielectric(cosThetaO, n1, n2);
 
-		float randVal = sampler->next();
 
 		float branchSelector = sampler->next();
 		bool sampleDelta = (branchSelector < 0.5f);
@@ -518,7 +501,6 @@ public:
 
 		wiLocal.normalize();
 		Vec3 wiWorld = shadingData.frame.toWorld(wiLocal);
-
 		return wiWorld;
 	}
 
@@ -656,7 +638,6 @@ public:
 			cosTheta);
 	}
 
-
 	Vec3 sample(const ShadingData& shadingData, Sampler* sampler,
 		Colour& reflectedColour, float& pdf) override
 	{
@@ -694,7 +675,6 @@ public:
 			float F = fresnelDielectric(cosThetaI, n1, n2);
 
 			float prob = sampler->next();
-		Vec3 wiLocal;
 			if (TIR) {
 				wiLocal = wiReflect;
 				F = 1.f;
@@ -754,7 +734,6 @@ public:
 			float n1 = extIOR, n2 = intIOR;
 			if (woLocal.z < 0.f) std::swap(n1, n2);
 			float eta = n1 / n2;
-			Vec3 I = -woLocal;
 			whLocal = (woLocal + wiLocal * eta).normalize();
 			if (whLocal.z < 0.f) whLocal = -whLocal;
 		}
@@ -852,15 +831,11 @@ public:
 	OrenNayarBSDF(Texture* _albedo, float _sigma)
 		: albedo(_albedo), sigma(_sigma)
 	{
-		albedo = _albedo;
-		sigma = _sigma;
 	}
 
 	virtual Vec3 sample(const ShadingData& shadingData, Sampler* sampler,
 		Colour& reflectedColour, float& pdf) override
 	{
-		Colour baseColor = albedo->sample(shadingData.tu, shadingData.tv);
-
 		float r1 = sampler->next();
 		float r2 = sampler->next();
 		Vec3 wiLocal = SamplingDistributions::cosineSampleHemisphere(r1, r2);
@@ -872,7 +847,6 @@ public:
 		reflectedColour = baseColor / M_PI;
 
 		Vec3 wi = shadingData.frame.toWorld(wiLocal);
-
 		return wi;
 	}
 
@@ -976,13 +950,6 @@ public:
 		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
 		forceAboveSurface(woLocal);
 
-		Vec3 woWorld = shadingData.wo;
-		Vec3 woLocal = shadingData.frame.toLocal(woWorld);
-		if (woLocal.z <= 0.f) {
-			pdf = 0.f;
-			reflectedColour = Colour(0.f, 0.f, 0.f);
-			return Vec3(0.f, 0.f, 0.f);
-		}
 		float cosThetaO = woLocal.z;
 		float fresnel = fresnelSchlick(cosThetaO, F0);
 
@@ -1016,7 +983,6 @@ public:
 			wiLocal = SamplingDistributions::cosineSampleHemisphere(r1, r2);
 			forceAboveSurface(wiLocal);
 		}
-			diffPdf = (wiLocal.z / M_PI);
 
 		float pdfDiff = wiLocal.z / M_PI;
 
@@ -1044,7 +1010,6 @@ public:
 			reflectedColour = fVal / finalPdf;
 		}
 
-		Vec3 wiWorld = shadingData.frame.toWorld(wiLocal);
 		return wiWorld;
 	}
 
@@ -1062,7 +1027,6 @@ public:
 
 		float cosDH = std::max(0.0f, wiLocal.dot(H));
 
-		float cosThetaO = woLocal.z;
 		float eta = extIOR / intIOR;
 		float F0 = (eta - 1.0f) / (eta + 1.0f);
 		F0 = F0 * F0;
@@ -1092,7 +1056,6 @@ public:
 		if (woLocal.z <= 0.0f || wiLocal.z <= 0.0f)
 			return 0.0f;
 
-		float cosThetaO = woLocal.z;
 		float eta = extIOR / intIOR;
 		float F0 = (eta - 1.0f) / (eta + 1.0f);
 		F0 = F0 * F0;
