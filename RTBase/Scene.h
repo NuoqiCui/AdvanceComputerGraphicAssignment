@@ -7,6 +7,16 @@
 #include "Materials.h"
 #include "Lights.h"
 
+struct VPL {
+	Vec3 position;
+	Vec3 normal;
+	Colour emission;
+	float pdf;
+	Colour radiance;
+	BSDF* bsdf;
+};
+
+
 class Camera
 {
 public:
@@ -26,7 +36,6 @@ public:
 		camera = V;
 		origin = camera.mulPoint(Vec3(0, 0, 0));
 	}
-	// Add code here
 	Ray generateRay(float x, float y)
 	{
 		float xprime = x / width;
@@ -39,14 +48,41 @@ public:
 		dir = dir.normalize();
 		return Ray(origin, dir);
 	}
+	bool projectOntoCamera(const Vec3& p, float& screenX, float& screenY)
+	{
+		Vec3 pCamera = camera.mulPoint(p);
+
+		Matrix projMatrix = inverseProjectionMatrix.invert();
+
+		float x = projMatrix.m[0 * 4 + 0] * pCamera.x +
+			projMatrix.m[0 * 4 + 1] * pCamera.y +
+			projMatrix.m[0 * 4 + 2] * pCamera.z +
+			projMatrix.m[0 * 4 + 3];
+		float y = projMatrix.m[1 * 4 + 0] * pCamera.x +
+			projMatrix.m[1 * 4 + 1] * pCamera.y +
+			projMatrix.m[1 * 4 + 2] * pCamera.z +
+			projMatrix.m[1 * 4 + 3];
+		float w = projMatrix.m[3 * 4 + 0] * pCamera.x +
+			projMatrix.m[3 * 4 + 1] * pCamera.y +
+			projMatrix.m[3 * 4 + 2] * pCamera.z +
+			projMatrix.m[3 * 4 + 3];
+
+		if (fabs(w) < 1e-6f)
+			return false;
+
+		float ndcX = x / w;
+		float ndcY = y / w;
+
+		screenX = ((ndcX + 1.0f) * 0.5f) * width;
+		screenY = ((1.0f - ndcY) * 0.5f) * height;
+
+		if (screenX < 0 || screenX >= width || screenY < 0 || screenY >= height)
+			return false;
+		return true;
+	}
+
 };
 
-struct VPL {
-	Vec3 position;
-	Vec3 normal;
-	Colour emission;
-	float pdf;
-};
 
 ShadingData createDummyShadingData(const Vec3& pos, const Vec3& normal)
 {
@@ -62,6 +98,7 @@ ShadingData createDummyShadingData(const Vec3& pos, const Vec3& normal)
 	sd.bsdf = nullptr;
 	return sd;
 }
+
 
 class Scene
 {
@@ -101,6 +138,7 @@ public:
 		}
 	}
 
+
 	void computeVPLs(int numPhotons, Sampler* sampler)
 	{
 		vplList.clear();
@@ -108,10 +146,7 @@ public:
 		if (numLights == 0)
 			return;
 		int photonsPerLight = numPhotons / numLights;
-
-		Vec3 center = (bounds.min + bounds.max) * 0.5f;
-		Vec3 defaultNormal(0.0f, 1.0f, 0.0f);
-		ShadingData dummySD = createDummyShadingData(center, defaultNormal);
+		const float pdfDir = 1.0f / (2.0f * M_PI);
 
 		for (int i = 0; i < numLights; i++)
 		{
@@ -119,39 +154,58 @@ public:
 			if (!light->isArea())
 				continue;
 
+			AreaLight* areaLight = dynamic_cast<AreaLight*>(light);
+			if (!areaLight)
+				continue;
+			Triangle* tri = areaLight->triangle;
+			if (!tri)
+				continue;
+
+			Vec3 triCenter = (tri->vertices[0].p + tri->vertices[1].p + tri->vertices[2].p) / 3.0f;
+			ShadingData dummySD = createDummyShadingData(triCenter, Vec3(0, 0, 0));
+			Vec3 lightNormal = light->normal(dummySD, triCenter);
+
 			for (int j = 0; j < photonsPerLight; j++)
 			{
-				Colour emitted;
-				float pdf;
-				Vec3 p = light->sample(dummySD, sampler, emitted, pdf);
-				if (pdf < 1e-6f)
+				float pdfPos;
+				Vec3 p = light->samplePositionFromLight(sampler, pdfPos);
+				if (pdfPos < 1e-6f)
 					continue;
+
 				float r1 = sampler->next();
 				float r2 = sampler->next();
-				Vec3 localDir = SamplingDistributions::cosineSampleHemisphere(r1, r2);
-				Frame frame;
-				frame.fromVector(defaultNormal);
-				Vec3 photonDir = frame.toWorld(localDir);
-				Ray photonRay(p, photonDir);
+				Vec3 dir = SamplingDistributions::uniformSampleHemisphere(r1, r2);
+				if (Dot(dir, lightNormal) < 0.0f)
+					dir = -dir;
+
+				Ray photonRay;
+				photonRay.init(p + dir * EPSILON, dir);
+
 				IntersectionData its = traverse(photonRay);
-				if (its.t < FLT_MAX)
-				{
-					ShadingData sd = calculateShadingData(its, photonRay);
-					if (!sd.bsdf->isPureSpecular())
-					{
-						VPL vpl;
-						vpl.position = photonRay.at(its.t);
-						vpl.normal = sd.sNormal;
-						float dist2 = its.t * its.t;
-						vpl.emission = emitted / (pdf * dist2);
-						vpl.pdf = 1.0f / photonsPerLight;
-						vplList.push_back(vpl);
-					}
-				}
+				if (its.t == FLT_MAX)
+					continue;
+
+				ShadingData sd = calculateShadingData(its, photonRay);
+				if (!sd.bsdf || sd.bsdf->isPureSpecular())
+					continue;
+
+				float cosTerm = Dot(dir, lightNormal);
+				if (cosTerm <= 0.0f)
+					continue;
+
+				Colour rad = areaLight->emission * cosTerm / (pdfPos * pdfDir * float(photonsPerLight));
+
+				VPL vpl;
+				vpl.position = photonRay.at(its.t);
+				vpl.normal = sd.sNormal;
+				vpl.emission = areaLight->emission;
+				vpl.pdf = pdfPos * pdfDir * float(photonsPerLight);
+				vpl.radiance = rad;
+				vpl.bsdf = sd.bsdf;
+				vplList.push_back(vpl);
 			}
 		}
 	}
-
 
 	IntersectionData traverse(const Ray& ray)
 	{

@@ -17,6 +17,8 @@ public:
 	virtual bool isArea() = 0;
 	virtual Vec3 normal(const ShadingData& shadingData, const Vec3& wi) = 0;
 	virtual float totalIntegratedPower() = 0;
+	virtual Vec3 samplePositionFromLight(Sampler* sampler, float& pdf) = 0;
+	virtual Vec3 sampleDirectionFromLight(Sampler* sampler, float& pdf) = 0;
 };
 
 class AreaLight : public Light
@@ -52,6 +54,28 @@ public:
 	float totalIntegratedPower()
 	{
 		return (triangle->area * emission.Lum());
+	}
+	Vec3 samplePositionFromLight(Sampler* sampler, float& pdf) override
+	{
+		if (!triangle) {
+			pdf = 0.0f;
+			return Vec3(0.0f, 0.0f, 0.0f);
+		}
+		return triangle->sample(sampler, pdf);
+	}
+
+	Vec3 sampleDirectionFromLight(Sampler* sampler, float& pdf) override
+	{
+		Vec3 n = triangle->gNormal();
+		Frame lightFrame;
+		lightFrame.fromVector(n);
+
+		float r1 = sampler->next();
+		float r2 = sampler->next();
+		Vec3 localDir = SamplingDistributions::cosineSampleHemisphere(r1, r2);
+		pdf = localDir.z / M_PI;
+
+		return lightFrame.toWorld(localDir);
 	}
 };
 
@@ -89,6 +113,25 @@ public:
 	float totalIntegratedPower()
 	{
 		return emission.Lum() * 4.0f * M_PI;
+	}
+	Vec3 samplePositionFromLight(Sampler* sampler, float& pdf) override
+	{
+		float r1 = sampler->next();
+		float r2 = sampler->next();
+		Vec3 dir = SamplingDistributions::uniformSampleSphere(r1, r2);
+		pdf = 1.0f / (4.0f * M_PI);
+
+		const float farDistance = 1e5f;
+		return dir * farDistance;
+	}
+
+	Vec3 sampleDirectionFromLight(Sampler* sampler, float& pdf) override
+	{
+		float r1 = sampler->next();
+		float r2 = sampler->next();
+		Vec3 wi = SamplingDistributions::uniformSampleSphere(r1, r2);
+		pdf = SamplingDistributions::uniformSpherePDF(wi);
+		return wi;
 	}
 };
 
