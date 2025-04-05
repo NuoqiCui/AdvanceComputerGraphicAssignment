@@ -151,7 +151,7 @@ public:
 	}
 
 	virtual Vec3 sample(const ShadingData& shadingData,
-		Sampler* ,
+		Sampler*,
 		Colour& reflectedColour,
 		float& pdf) override
 	{
@@ -954,7 +954,7 @@ public:
 		}
 
 		float cosThetaI = fabsf(wiLocal.z);
-		Colour bsdfVal = bsdfSpec * F +  bsdfDiff * (1.f - F);
+		Colour bsdfVal = bsdfSpec * F + bsdfDiff * (1.f - F);
 
 		reflectedColour = bsdfVal * cosThetaI / pdf;
 
@@ -964,9 +964,7 @@ public:
 	virtual Colour evaluate(const ShadingData& shadingData, const Vec3& wiWorld) override
 	{
 		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
-		forceAboveSurface(woLocal);
 		Vec3 wiLocal = shadingData.frame.toLocal(wiWorld);
-		forceAboveSurface(wiLocal);
 
 		if (woLocal.z <= 0.0f || wiLocal.z <= 0.0f)
 			return Colour(0.0f, 0.0f, 0.0f);
@@ -980,7 +978,7 @@ public:
 
 		Colour diffuseTerm = albedo->sample(shadingData.tu, shadingData.tv) / M_PI;
 
-		return  specularTerm * F  +  diffuseTerm * (1.f - F);
+		return  specularTerm * F + diffuseTerm * (1.f - F);
 	}
 
 	virtual float PDF(const ShadingData& shadingData, const Vec3& wiWorld) override

@@ -258,7 +258,7 @@ public:
 
 		Colour f = shadingData.bsdf ? shadingData.bsdf->evaluate(shadingData, wi) : Colour(1.0f, 1.0f, 1.0f);
 		float cosTheta = max(0.0f, shadingData.sNormal.dot(wi));
-		float scaleFactor = 100.0f; 
+		float scaleFactor = 100.0f;
 		float geom = scaleFactor / (dist * dist);
 
 

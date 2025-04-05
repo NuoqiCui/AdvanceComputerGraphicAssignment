@@ -153,7 +153,8 @@ void loadInstance(std::string sceneName, std::vector<Triangle>& meshTriangles, s
 		if (roughness < 0.001f)
 		{
 			material = new GlassBSDF(loadTexture(filename, textureManager), intIOR, extIOR);
-		} else
+		}
+		else
 		{
 			material = new DielectricBSDF(loadTexture(filename, textureManager), intIOR, extIOR, roughness);
 		}
@@ -166,11 +167,11 @@ void loadInstance(std::string sceneName, std::vector<Triangle>& meshTriangles, s
 		Colour k;
 		instance.material.find("eta").getValuesAsVector3(eta.r, eta.g, eta.b);
 		instance.material.find("k").getValuesAsVector3(k.r, k.g, k.b);
-		float roughness = instance.material.find("roughness").getValue(1.0f)+0.001f;
+		float roughness = instance.material.find("roughness").getValue(1.0f) + 0.001f;
 		material = new ConductorBSDF(loadTexture(filename, textureManager), eta, k, roughness);
 		meshMaterials.push_back(material);
 	}
-	
+
 	if (instance.material.find("emission").getValue("") != "")
 	{
 		Colour emission;
@@ -278,7 +279,8 @@ Scene* loadScene(std::string sceneName)
 	{
 		Texture* env = loadTexture(sceneName + "/" + gemscene.findProperty("envmap").getValue(""), textureManager);
 		background = new EnvironmentMap(env);
-	} else
+	}
+	else
 	{
 		background = new BackgroundColour(Colour(0.0f, 0.0f, 0.0f));
 	}

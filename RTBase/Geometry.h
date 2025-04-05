@@ -206,7 +206,7 @@ public:
 	}
 	bool rayAABB(const Ray& r, float& tEnter, float& tExit) const
 	{
-		
+
 		tEnter = -FLT_MAX;
 		tExit = FLT_MAX;
 
@@ -397,7 +397,7 @@ public:
 					intersection.t = t;
 					intersection.alpha = u;
 					intersection.beta = v;
-					intersection.gamma = 1-u-v;
+					intersection.gamma = 1 - u - v;
 					intersection.ID = i;
 				}
 			}
